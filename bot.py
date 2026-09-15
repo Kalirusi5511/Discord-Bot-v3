@@ -2,6 +2,7 @@ import datetime
 import os
 from threading import Thread
 import discord
+from discord import app_commands
 from flask import Flask
 import requests
 
@@ -15,7 +16,7 @@ def home():
 
 
 def run_webserver():
-  # Render weist automatisch den benötigten Port zu (Standard ist 10000)
+  # Render weist automatisch einen freien Port zu (Standard 10000)
   port = int(os.environ.get("PORT", 10000))
   app.run(host="0.0.0.0", port=port)
 
@@ -24,15 +25,16 @@ def run_webserver():
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# 3. Intents (Berechtigungen) festlegen
+# 3. Intents (Berechtigungen) & Client-Setup 🤖
 intents = discord.Intents.default()
-intents.presences = True  # Erlaubt das Überwachen des Online-Status 🟢
-intents.members = True  # Erlaubt Zugriff auf Server-Mitglieder
+intents.presences = True  # Online-Status überwachen 🟢
+intents.members = True  # Server-Mitglieder abfragen 👥
 
 client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
 
 
-# Funktion zum Senden von Nachrichten über den Webhook 📤
+# 4. Hilfsfunktion für Webhook-Logs 📤
 def send_webhook_log(message):
   if WEBHOOK_URL:
     data = {"content": message}
@@ -44,19 +46,47 @@ def send_webhook_log(message):
     print("⚠️ Kein WEBHOOK_URL angegeben!")
 
 
-# 4. Bot-Ereignisse ⚡
+# 5. Slash Command (/status) definieren 📜
+@tree.command(
+    name="status",
+    description="Zeigt den aktuellen Online-Status eines Mitglieds an",
+)
+async def status_command(
+    interaction: discord.Interaction, member: discord.Member
+):
+  status_emojis = {
+      discord.Status.online: "🟢 Online",
+      discord.Status.idle: "🟡 Abwesend (Idle)",
+      discord.Status.dnd: "🔴 Bitte nicht stören (DND)",
+      discord.Status.offline: "⚫ Offline",
+  }
+  aktueller_status = status_emojis.get(
+      member.status, f"❓ Unbekannt ({member.status})"
+  )
+
+  # Antwort an den Nutzer im Discord-Chat 💬
+  await interaction.response.send_message(
+      f"Der Status von **{member.name}** ist: {aktueller_status}"
+  )
+
+
+# 6. Bot-Ereignisse (Events) ⚡
 @client.event
 async def on_ready():
-  print(f"🟢 Log-Bot läuft erfolgreich auf Render als {client.user}")
+  # Synchronisiert die Befehle mit Discord 🚀
+  await tree.sync()
+  print(
+      f"🟢 Log-Bot läuft auf Render als {client.user} und Slash Commands sind"
+      " aktiv!"
+  )
 
 
 @client.event
 async def on_presence_update(before: discord.Member, after: discord.Member):
-  # Nur reagieren, wenn sich der Status geändert hat
   if before.status != after.status:
     zeitstempel = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Status-Änderungen auswerten
+    # Status-Änderungen prüfen 🔍
     if after.status == discord.Status.offline:
       log_text = f"[{zeitstempel}] 🔴 **{after.name}** hat Discord geschlossen (Offline)"
     elif before.status == discord.Status.offline:
@@ -64,21 +94,17 @@ async def on_presence_update(before: discord.Member, after: discord.Member):
     else:
       log_text = f"[{zeitstempel}] 🟡 **{after.name}**: Status geändert von `{before.status}` zu `{after.status}`"
 
-    # Ausgabe in die Render-Konsole
     print(log_text)
-
-    # Direkt über den Webhook in deinen Discord-Kanal senden 🚀
     send_webhook_log(log_text)
 
 
-# 5. Hauptprogramm starten 🚀
+# 7. Bot & Webserver starten 🚀
 if __name__ == "__main__":
-  # Webserver im Hintergrund starten, damit Render den Port sofort findet
+  # Flask im Hintergrund starten, damit Render den offenen Port findet
   server_thread = Thread(target=run_webserver)
   server_thread.daemon = True
   server_thread.start()
 
-  # Discord Bot starten
   if DISCORD_TOKEN:
     client.run(DISCORD_TOKEN)
   else:
