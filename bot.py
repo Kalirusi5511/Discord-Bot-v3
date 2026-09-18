@@ -154,7 +154,7 @@ def sanitize_name(name: str) -> str:
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
-intents.guild_expressions = True
+intents.emojis_and_stickers = True
 
 
 class StickerBot(commands.Bot):
