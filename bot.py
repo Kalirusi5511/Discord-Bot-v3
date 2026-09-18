@@ -1,4 +1,4 @@
-```python
+python
 import datetime
 import os
 from threading import Thread
